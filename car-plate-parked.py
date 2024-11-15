@@ -30,7 +30,7 @@ fixed_detection_boxes = [
 
 # 사전 정의된 번호판 목록
 defined_plates = [
-    "160허3733", "93오8131", "149허6024"
+    "95라0694", "48너6942", "149허6024", "12오7945", "375도6370"
 ]
 
 # OCR 텍스트와 사전 정의된 번호판 간 유사도를 비교해 가장 유사한 번호판을 반환하는 함수
@@ -52,7 +52,7 @@ def match_defined_plate(ocr_text, defined_plates):
             highest_similarity = similarity
             best_match = plate
 
-    # 유사도가 0.7 이상일 때만 교정된 번호판을 반환
+    # 유사도가 0.3 이상일 때만 교정된 번호판을 반환
     if highest_similarity >= 0.3:
         return best_match
     else:
@@ -64,7 +64,7 @@ detection_count = defaultdict(int)
 non_detection_count = defaultdict(int)
 log_file_path = "log.csv"
 
-# Streamlit 페이지 설
+# Streamlit 페이지 설정
 st.set_page_config(layout="wide", page_title="주차장 관리 시스템")
 st.title("주차장 관리 시스템")
 left_column, right_column = st.columns([1.7, 2])
@@ -155,7 +155,7 @@ def update_parking_log_table():
                     if not second_latest_yes.empty:
                         first_no_row = filtered_df[(filtered_df['출차여부'] == 'no') & (filtered_df['시간'] > second_latest_yes['시간'])].sort_values(by='시간', ascending=True).iloc[0]
                         time_diff = (current_time - first_no_row['시간']).total_seconds()
-                        charge = (time_diff // 600) * 1000 
+                        charge = (time_diff // 60) * 100
                         df.at[latest_row.name, '요금'] = charge
 
     df.to_csv(log_file_path, index = False, encoding = 'utf-8')
@@ -163,7 +163,7 @@ def update_parking_log_table():
     latest_logs = df[df['출차여부'] == "no"].sort_values(by='시간', ascending=False).drop_duplicates(subset=['자리번호'], keep='first')
         
     log_table.empty()  # 이전 표 삭제
-    log_table.table(latest_logs[['자리번호', '차량번호', '시간', '출차여부']])
+    log_table.table(latest_logs[['자리번호', '차량번호', '시간', '출차여부']], index=False)
 
     
 
@@ -172,7 +172,7 @@ def left():
     with left_column:
         frame_window = st.empty()
 
-        video_path = "20241107_114407.mp4"
+        video_path = "20241114_114609.mp4"
         cap = cv2.VideoCapture(video_path)
         fps = int(cap.get(cv2.CAP_PROP_FPS))
 
@@ -185,6 +185,7 @@ def left():
             occupied_spots = 0  # 감지된 주차 대수 초기화
             ret, frame = cap.read()
             parking_log = []
+            is_detected = defaultdict(lambda : False)
             if not ret:
                 break
             
@@ -222,8 +223,7 @@ def left():
                                                 if plate_text:
                                                     for fixed_box in fixed_detection_boxes:
                                                         if calculate_inclusion(vehicle_box, fixed_box) >= 0.95:
-                                                            cv2.putText(cropped_vehicle, plate_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                                                            detection_count[fixed_box] += 1
+                                                            is_detected[fixed_box] = True
                                                             if detection_count[fixed_box] >= 30:
                                                                 box_status[fixed_box] = (0, 0, 255)
                                                                   # 감지된 주차 대수 증가
@@ -243,9 +243,11 @@ def left():
 
                 
                 for fixed_box, color in box_status.items():
+                    if is_detected[fixed_box]:
+                        detection_count[fixed_box] += 1
                     if color == (0, 255, 255):
                         non_detection_count[fixed_box] += 1
-                        if non_detection_count[fixed_box] >= 5:
+                        if non_detection_count[fixed_box] >= 10:
                                 detection_count[fixed_box] = 0
                                 non_detection_count[fixed_box] = 0
                     if color == (0, 0, 255):
