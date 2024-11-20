@@ -19,6 +19,12 @@ if "TORCH_HOME" in os.environ:
 os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+# nvidia cuda gpu 사용
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+vehicle_model = YOLO('yolov8n.pt').to(device)
+plate_model = YOLO('yolov8_plate.pt').to(device)
+ocr = PaddleOCR(use_angle_cls=True, lang='korean')
+
 # 차량 감지 박스 설정 (1번 자리부터 5번 자리까지 설정)
 fixed_detection_boxes = [
     (220, 470, 250, 500),  # 1번 자리
@@ -28,10 +34,16 @@ fixed_detection_boxes = [
     (1700, 470, 1730, 500)   # 5번 자리
 ]
 
-# 사전 정의된 번호판 목록
-defined_plates = [
-    "95라0694", "48너6942", "149허6024", "12오7945", "375도6370"
-]
+
+def read_defined_plates(file_path):
+    
+    with open(file_path, 'r', encoding='utf-8') as file:
+        defined_plates = [line.strip() for line in file.readlines()]
+    return defined_plates
+
+plates_file_path = 'plates.txt'
+defined_plates = read_defined_plates(plates_file_path)
+
 
 # OCR 텍스트와 사전 정의된 번호판 간 유사도를 비교해 가장 유사한 번호판을 반환하는 함수
 def match_defined_plate(ocr_text, defined_plates):
@@ -163,7 +175,7 @@ def update_parking_log_table():
     latest_logs = df[df['출차여부'] == "no"].sort_values(by='시간', ascending=False).drop_duplicates(subset=['자리번호'], keep='first')
         
     log_table.empty()  # 이전 표 삭제
-    log_table.table(latest_logs[['자리번호', '차량번호', '시간', '출차여부']], index=False)
+    log_table.table(latest_logs[['자리번호', '차량번호', '시간', '출차여부']].reset_index(drop=True))
 
     
 
@@ -172,20 +184,17 @@ def left():
     with left_column:
         frame_window = st.empty()
 
-        video_path = "20241114_114609.mp4"
+        video_path = "1080p-30m(2).mp4"
         cap = cv2.VideoCapture(video_path)
         fps = int(cap.get(cv2.CAP_PROP_FPS))
-
-        vehicle_model = YOLO('yolov8n.pt')
-        plate_model = YOLO('yolov8_plate.pt')
-        ocr = PaddleOCR(use_angle_cls=True, lang='korean')
         frame_count = 0
+        parking_log = []
         
         while cap.isOpened():
             occupied_spots = 0  # 감지된 주차 대수 초기화
             ret, frame = cap.read()
-            parking_log = []
             is_detected = defaultdict(lambda : False)
+            
             if not ret:
                 break
             
@@ -233,15 +242,19 @@ def left():
                                                                     "시간": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                                                                     "출차여부": "no"
                                                                 })
-                                                                with open(log_file_path, mode='a', newline='', encoding='utf-8') as f:
-                                                                    writer = csv.DictWriter(f, fieldnames=parking_log[-1].keys())
-                                                                    if f.tell() == 0:
-                                                                        writer.writeheader()
-                                                                    writer.writerow(parking_log[-1])
+                                            
                                                             else:
                                                                 box_status[fixed_box] = (0, 128, 255)
 
-                
+                if parking_log:  # parking_log에 데이터가 있을 경우
+                    with open(log_file_path, mode='a', newline='', encoding='utf-8') as f:
+                        writer = csv.DictWriter(f, fieldnames=parking_log[0].keys())
+                        if f.tell() == 0:
+                            writer.writeheader()
+                        writer.writerows(parking_log)  # 리스트의 모든 로그를 한 번에 기록
+                    parking_log.clear()  # 기록 후 리스트 초기화
+
+
                 for fixed_box, color in box_status.items():
                     if is_detected[fixed_box]:
                         detection_count[fixed_box] += 1
@@ -256,7 +269,7 @@ def left():
                     cv2.rectangle(frame, (fixed_box[0], fixed_box[1]), (fixed_box[2], fixed_box[3]), color, 2)
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame_window.image(frame, use_column_width=True)
+                frame_window.image(frame, use_container_width=True)
 
                 # 실시간 주차 대수 그래프 업데이트
                 update_parking_count_chart(occupied_spots)
