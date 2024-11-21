@@ -107,7 +107,7 @@ def update_parking_count_chart(occupied_spots):
     global parking_count_data  # parking_count_data를 전역 변수로 선언
     
     # 실시간 시간 데이터 생성 (현재 시간)
-    current_time = datetime.now().strftime("%H:%M:%S")  # 날짜와 시간 포함
+    current_time = datetime.now().strftime("%H:%M:%S") + '.' + str(datetime.now().microsecond)[:2]  # 마이크로초를 잘라서 소수점 둘째자리까지만 사용
     
     # 새로운 데이터 추가 (시간과 주차 대수)
     new_data = pd.DataFrame({"시간": [current_time], "주차 대수": [occupied_spots]})
@@ -156,7 +156,7 @@ def update_parking_log_table():
             filtered_df = df[df['자리번호'] == parking_spot]
             
             if not filtered_df.empty:
-                filtered_df['시간'] = pd.to_datetime(df['시간'], errors = 'coerce')
+                filtered_df['시간'] = pd.to_datetime(filtered_df['시간'], errors = 'coerce')
                 latest_row = filtered_df.sort_values(by = '시간', ascending = False).iloc[0]
 
                 if latest_row['출차여부'] == 'no' and (current_time - latest_row['시간']).total_seconds() >= 10:

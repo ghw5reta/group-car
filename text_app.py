@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import csv
+from datetime import datetime
 
 st.set_page_config(layout="wide", page_title="주차장 검색 시스템")
 st.title("주차장 검색 시스템")
@@ -11,7 +12,8 @@ def find_parking_spot_by_car_number(car_number, log_file_path='log.csv'):
     try:
         with open(log_file_path, mode='r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
-            for row in reader:
+            rows = list(reader)
+            for row in reversed(rows):
                 if row['차량번호'] == car_number:
                     return row['자리번호']
         return "차량 번호를 찾을 수 없습니다."
@@ -24,31 +26,25 @@ def find_parking_spot_by_car_number(car_number, log_file_path='log.csv'):
 
 def find_parking_cost_by_car_number_and_parking_spot(car_number, space_number, log_file_path='log.csv'):
     try:
-        with open(log_file_path, mode='r', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            latest_cost = None  # 가장 최신 요금을 저장할 변수 초기화
-            latest_time = None  # 가장 최신 시간을 저장할 변수 초기화
+        # log.csv 파일 읽기
+        df = pd.read_csv(log_file_path, encoding='utf-8')
+        
+        is_or_not = df[(df['차량번호'] == car_number) & (df['자리번호'] == int(space_number))].copy()
+        
+        if not is_or_not.empty:
+        # 차량번호와 자리번호가 일치하는 행들 필터링
+            filtered_df = df[df['자리번호'] == int(space_number)].copy()
+            filtered_df['시간'] = pd.to_datetime(filtered_df['시간'], errors='coerce')  # 시간 컬럼을 datetime 형식으로 변환
+            latest_yes_row = filtered_df[filtered_df['출차여부'] == 'yes'].sort_values(by='시간', ascending=False).iloc[0]
+            first_no_row = filtered_df[(filtered_df['출차여부'] == 'no') & (filtered_df['시간'] > latest_yes_row['시간'])].sort_values(by='시간', ascending=True).iloc[0]
+            time_diff = (datetime.now() - first_no_row['시간']).total_seconds() # 분 단위 계산
+            charge = (time_diff // 60) * 100
             
-            for row in reader:
-                # 차량 번호와 자리 번호가 일치하는 경우
-                if row['차량번호'] == car_number and row['자리번호'] == space_number:
-                    # 요금 컬럼이 존재하고 비어 있지 않은지 확인
-                    if '요금' in row and row['요금']:
-                        try:
-                            current_time = row['시간']
-                            current_cost = float(row['요금'])
-                            
-                            # 가장 최근의 시간과 요금을 업데이트
-                            if latest_time is None or current_time > latest_time:
-                                latest_time = current_time
-                                latest_cost = current_cost
-                        except ValueError:
-                            continue  # 요금이 변환할 수 없는 경우 무시
-            
-            if latest_cost is not None:  # 요금이 있는 경우
-                return f"{int(latest_cost)} 원 (최신 시간: {latest_time})"
-            else:
-                return "해당 차량 번호와 주차칸에 대한 요금 정보가 없습니다."
+            return f"{charge} 원 (차량번호: {car_number}, 자리번호: {space_number})"
+    
+        else:
+            return "해당 차량 번호와 자리 번호에 대한 기록이 없습니다."
+
     except FileNotFoundError:
         return "로그 파일을 찾을 수 없습니다."
     except Exception as e:
