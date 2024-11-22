@@ -184,13 +184,14 @@ def left():
     with left_column:
         frame_window = st.empty()
 
-        video_path = "1080p-30m(2).mp4"
+        video_path = "1080p-30m(3).mp4"
         cap = cv2.VideoCapture(video_path)
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         frame_count = 0
         parking_log = []
         
         while cap.isOpened():
+            
             occupied_spots = 0  # 감지된 주차 대수 초기화
             ret, frame = cap.read()
             is_detected = defaultdict(lambda : False)
@@ -199,6 +200,7 @@ def left():
                 break
             
             if frame_count % fps == 0:
+                start_time = time.time()  # 프레임 처리 시작 시간
                 vehicle_results = vehicle_model(frame)
                 box_status = {box: (0, 255, 255) for box in fixed_detection_boxes}
                 
@@ -277,7 +279,16 @@ def left():
                 # 실시간 주차 로그 테이블 업데이트
                 update_parking_log_table()
 
+                elapsed_time = time.time() - start_time  # 경과 시간 계산
+                remaining_time = 0.9 - elapsed_time  # 남은 시간 계산
+
+                if remaining_time > 0:
+                    time.sleep(remaining_time)  # 남은 시간만큼 대기
+
             frame_count += 1
+
+            
+
 
 if __name__ == "__main__":
     left()
